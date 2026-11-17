@@ -101,6 +101,9 @@ class Client(BaseClient):
         speaker_id: Optional[str] = None,
         voice_audio: Optional[AudioInput] = None,
         controls: Optional[Union[Controls, dict]] = None,
+        style: Optional[str] = None,
+        seed: Optional[int] = None,
+        prefix: Optional[Union[Prefix, dict]] = None,
     ) -> Iterator[bytes]:
         payload = self._speech_payload(
             StreamRequest,
@@ -111,6 +114,9 @@ class Client(BaseClient):
             language=language,
             temperature=temperature,
             controls=controls,
+            style=style,
+            seed=seed,
+            prefix=prefix,
         )
 
         with self._http_client.stream("POST", "/speech/stream", json=payload) as response:

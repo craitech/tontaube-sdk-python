@@ -48,6 +48,7 @@ with open("speech.mp3", "wb") as f:
 
 - `style` (`audiobook`, `conversational`, `agentic`) and `controls=tontaube.Controls(rate=1, pause=3)` shape the delivery.
 - `seed` makes a generation repeatable.
+- `style`, `controls`, `seed` and `prefix` work for streaming too.
 - `include_timestamps=True` returns when each word is spoken (English).
 - `return_context=True` and `prefix` continue earlier speech seamlessly.
 

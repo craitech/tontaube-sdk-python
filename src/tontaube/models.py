@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Literal, Optional, Union
+from typing import ClassVar, List, Literal, Optional, Union
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 _MAX_TEXT_LENGTH = 30_000
@@ -76,6 +76,8 @@ class Timestamps(BaseModel):
     characters: List[Character] = []
 
 class GenerateRequest(BaseModel):
+    _single_call_max_text_length: ClassVar[int] = _SINGLE_CALL_MAX_TEXT_LENGTH
+
     text: str
     voice_id: Optional[str] = None
     voice_audio_b64: Optional[str] = Field(None, repr=False)
@@ -99,7 +101,7 @@ class GenerateRequest(BaseModel):
             raise ValueError("Provide exactly one of voice_id, voice_audio or speaker_id")
         if len(self.text) > _MAX_TEXT_LENGTH:
             raise ValueError(f"Text length must be at most {_MAX_TEXT_LENGTH} characters")
-        if self.single_call and len(self.text) > _SINGLE_CALL_MAX_TEXT_LENGTH:
+        if self.single_call and len(self.text) > self._single_call_max_text_length:
             raise ValueError(
                 "With prefix, return_context, include_timestamps, seed or style, "
                 f"text length must be at most {_SINGLE_CALL_MAX_TEXT_LENGTH} characters"
@@ -120,10 +122,12 @@ class GenerateRequest(BaseModel):
         )
 
 class StreamRequest(GenerateRequest):
+    _single_call_max_text_length: ClassVar[int] = _STREAM_MAX_TEXT_LENGTH
+
     @model_validator(mode="after")
     def validate_stream(self):
-        if self.single_call:
-            raise ValueError("prefix, return_context, include_timestamps, seed and style are not available when streaming")
+        if self.return_context or self.include_timestamps:
+            raise ValueError("return_context and include_timestamps are not available when streaming")
         if len(self.text) > _STREAM_MAX_TEXT_LENGTH:
             raise ValueError(f"Text length must be at most {_STREAM_MAX_TEXT_LENGTH} characters when streaming")
         return self

@@ -124,6 +124,14 @@ def test_request_validation():
         tontaube.GenerateRequest(text="Hi", voice_id=VOICE_ID, controls={"speed": 1})
     with pytest.raises(ValueError):
         tontaube.StreamRequest(text="x" * 6001, voice_id=VOICE_ID)
+    with pytest.raises(ValueError):
+        tontaube.StreamRequest(text="Hi", voice_id=VOICE_ID, return_context=True)
+    with pytest.raises(ValueError):
+        tontaube.StreamRequest(text="Hi", voice_id=VOICE_ID, include_timestamps=True)
+    stream = tontaube.StreamRequest(
+        text="Hi", voice_id=VOICE_ID, style="agentic", seed=3, prefix={"text": "Before.", "context": [{"silence": 2}]}
+    )
+    assert stream.model_dump(exclude_none=True)["style"] == "agentic"
     assert tontaube.GenerateRequest(text="x" * 2001, voice_id=VOICE_ID).text
 
 
@@ -202,6 +210,9 @@ def test_stream_yields_chunks_and_raises_errors():
 
     with make_client(handler) as client:
         assert b"".join(client.stream_speech("Hi", VOICE_ID)) == b"abcdef"
+        assert b"".join(client.stream_speech("x" * 3000, VOICE_ID, style="conversational", seed=1)) == b"abcdef"
+        with pytest.raises(ValueError):
+            list(client.stream_speech("x" * 6001, VOICE_ID, style="conversational"))
         with pytest.raises(tontaube.APIError) as error:
             list(client.stream_speech("fail", VOICE_ID))
         assert error.value.code == "insufficient_balance"
