@@ -1,8 +1,9 @@
-from typing import List, Optional
+from typing import AsyncIterator, List, Optional, Union
 
 import httpx
 
-from .models import Speaker, GenerateRequest, GenerateResponse
+from .models import Speaker, Voice, Controls, Prefix, GenerateRequest, GenerateResponse, StreamRequest
+from .core import AudioInput
 from ._base_client import BaseClient
 from ._constants import DEFAULT_BASE_URL, VERSION_CHECK_TIMEOUT
 
@@ -31,31 +32,93 @@ class AsyncClient(BaseClient):
         self._handle_response(response)
         return [Speaker.model_validate(s) for s in response.json()]
 
+    async def list_voices(self, type: Optional[str] = None) -> List[Voice]:
+        response = await self._http_client.get("/voices", params={"type": type} if type else None)
+        self._handle_response(response)
+        return [Voice.model_validate(v) for v in response.json()]
+
+    async def get_voice(self, voice_id: str) -> Voice:
+        response = await self._http_client.get(f"/voices/{voice_id}")
+        self._handle_response(response)
+        return Voice.model_validate(response.json())
+
+    async def create_voice(self, name: str, audio: AudioInput, language: Optional[str] = None) -> Voice:
+        response = await self._http_client.post("/voices", **self._voice_upload(name, audio, language))
+        self._handle_response(response)
+        return Voice.model_validate(response.json())
+
+    async def delete_voice(self, voice_id: str) -> None:
+        response = await self._http_client.delete(f"/voices/{voice_id}")
+        self._handle_response(response)
+
     async def generate_speech(
         self,
         text: str,
-        speaker_id: str,
+        voice_id: Optional[str] = None,
         language: Optional[str] = None,
         format: Optional[str] = None,
         temperature: Optional[float] = None,
+        speaker_id: Optional[str] = None,
+        voice_audio: Optional[AudioInput] = None,
+        controls: Optional[Union[Controls, dict]] = None,
+        style: Optional[str] = None,
+        seed: Optional[int] = None,
+        prefix: Optional[Union[Prefix, dict]] = None,
+        return_context: Optional[bool] = None,
+        include_timestamps: Optional[bool] = None,
+        audio_format: Optional[str] = None,
+        sample_rate: Optional[int] = None,
     ) -> GenerateResponse:
-        payload = GenerateRequest(
+        payload = self._speech_payload(
+            GenerateRequest,
             text=text,
+            voice_id=voice_id,
             speaker_id=speaker_id,
+            voice_audio=voice_audio,
             language=language,
             format=format,
             temperature=temperature,
-        ).model_dump(exclude_none=True)
+            controls=controls,
+            style=style,
+            seed=seed,
+            prefix=prefix,
+            return_context=return_context,
+            include_timestamps=include_timestamps,
+            audio_format=audio_format,
+            sample_rate=sample_rate,
+        )
 
         response = await self._http_client.post("/speech/generate", json=payload)
         self._handle_response(response)
-        return GenerateResponse(
-            content=response.content,
-            sample_rate=response.headers.get("x-sample-rate"),
-            audio_duration=response.headers.get("x-audio-duration"),
-            cost_usd=response.headers.get("x-cost-usd"),
-            balance_usd=response.headers.get("x-balance-usd"),
+        return self._speech_response(response)
+
+    async def stream_speech(
+        self,
+        text: str,
+        voice_id: Optional[str] = None,
+        language: Optional[str] = None,
+        temperature: Optional[float] = None,
+        speaker_id: Optional[str] = None,
+        voice_audio: Optional[AudioInput] = None,
+        controls: Optional[Union[Controls, dict]] = None,
+    ) -> AsyncIterator[bytes]:
+        payload = self._speech_payload(
+            StreamRequest,
+            text=text,
+            voice_id=voice_id,
+            speaker_id=speaker_id,
+            voice_audio=voice_audio,
+            language=language,
+            temperature=temperature,
+            controls=controls,
         )
+
+        async with self._http_client.stream("POST", "/speech/stream", json=payload) as response:
+            if response.is_error:
+                await response.aread()
+            self._handle_response(response)
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
     async def close(self):
         await self._http_client.aclose()
